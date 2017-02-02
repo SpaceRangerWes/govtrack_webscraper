@@ -9,6 +9,9 @@ import os
 
 def get_section(section):
     nextNode = section
+    title = nextNode.text
+    regex = re.compile('[^a-zA-Z]')
+    title = regex.sub('', nextNode.text).lower()
     text = ""
     while True:
         try:
@@ -21,14 +24,11 @@ def get_section(section):
         except AttributeError:
             tag_name = ""
         if tag_name == "p":
-            text += str(nextNode.string)
+            text += str(nextNode.text)
         elif tag_name == "h3":
             # end of section
             break
-    try:
-        return (nextNode.text, text)
-    except AttributeError:
-        return ("NoneSection", text)
+    return (title, text)
 
 
 def get_bill_page(url):
@@ -45,10 +45,11 @@ def get_bill_page(url):
 
 
 def get_bill_summary(sections):
-    if "Summary" in sections:
-        return (sections["Summary"])
+    if "summary" in sections:
+        return (sections["summary"])
     else:
-        return ("Error providing bill summary")
+        return ("Error providing bill summary; keys available: {}".format(
+            sections.keys()))
 
 
 if __name__ == "__main__":
