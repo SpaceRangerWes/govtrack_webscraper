@@ -4,34 +4,83 @@ import urllib.request
 from bs4 import BeautifulSoup
 import re
 import csv
+import os
 
-#Query the website and return the html to the variable 'page'
-with urllib.request.urlopen('https://policy.house.gov/legislative/bills') as response:
-    page = response.read()
+
+def get_section(section):
+    nextNode = section
+    text = ""
+    while True:
+        try:
+            nextNode = nextNode.nextSibling
+        except AttributeError:
+            # end of page
+            break
+        try:
+            tag_name = nextNode.name
+        except AttributeError:
+            tag_name = ""
+        if tag_name == "p":
+            text += str(nextNode.string)
+        elif tag_name == "h3":
+            # end of section
+            break
+    try:
+        return (nextNode.text, text)
+    except AttributeError:
+        return ("NoneSection", text)
+
 
 def get_bill_page(url):
-    texts = ""
+    sections = dict()
     with urllib.request.urlopen('https://policy.house.gov' + url) as response:
         info_page = response.read()
     soup_info = BeautifulSoup(info_page, "lxml")
     title = soup_info.find("h1", {"id": "page-title"}).text
-    m = re.search(r'\<h3\>\s*\<strong\>\s*Summary\s*\<\/strong\>\s*\<\/h3\>\s*((.|\s)*?)\<hr\/\>',str(soup_info))
-    n = re.sub('<[^<]+?>', '', m.group(1))
-    n = n.replace(u'\xa0', u'')
-    n = n.replace(u'\n', u'')
-    return (n, title)
+    for section in soup_info.findAll('h3'):
+        key, value = get_section(section)
+        sections[key] = value
+    print(title)
+    return (title, sections)
 
-#Parse the html in the 'page' variable, and store it in Beautiful Soup format
-soup = BeautifulSoup(page, "lxml")
-tuple_list = []
-for each in soup.findAll('div',{'class': lambda x: x and 'views-row' in x.split()}):
-    time = each.span.span.span.text
-    a = each.find('a', href=True)
-    summary, title = get_bill_page(a['href'])
-    tuple_list.append((title, summary, time))
 
-with open('govtrack.csv','wb') as out:
-    csv_out=csv.writer(out)
-    csv_out.writerow(['title','Summary', 'last_action'])
-    for row in tuple_list:
-        csv_out.writerow(row)
+def get_bill_summary(sections):
+    if "Summary" in sections:
+        return (sections["Summary"])
+    else:
+        return ("Error providing bill summary")
+
+
+if __name__ == "__main__":
+    #Query the website and return the html to the variable 'page'
+    with urllib.request.urlopen(
+            'https://policy.house.gov/legislative/bills') as response:
+        page = response.read()
+
+    #Parse the html in the 'page' variable, and store it in Beautiful Soup format
+    soup = BeautifulSoup(page, "lxml")
+    bills = soup.findAll('div',
+                         {'class': lambda x: x and 'views-row' in x.split()})
+    index = 1
+    total = len(bills)
+
+    #Remove previous data run
+    try:
+        os.remove('govtrack_old.csv')
+    except OSError:
+        if os.path.isfile('govtrack.csv'):
+            os.rename('govtrack.csv', 'govtrack_old.csv')
+
+    #Write by appending to csv file
+    with open('govtrack.csv', 'w') as out:
+        csv_out = csv.writer(out)
+        csv_out.writerow(['title', 'summary', 'last_action_date'])
+        for each in bills:
+            time = each.span.span.span.text
+            a = each.find('a', href=True)
+            print("\n{0}/{1}".format(index, total))
+            index += 1
+            title, bill_sections = get_bill_page(a['href'])
+            summary = get_bill_summary(bill_sections)
+            csv_out.writerow([title, summary, time])
+    print("Finished Scraping")
